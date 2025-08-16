@@ -12,6 +12,13 @@ FPS = 24                 # frames per second
 SEC_PER_TOUR = 4         # seconds per tour (uniform)
 CUT_TOUR = 1             # after this tour only top-10 remain on plot
 
+# extra space to the right of the current view (in tours)
+RIGHT_MARGIN_TOURS = 0.25
+TAIL_PAUSE_SEC = 2        # freeze at the last tour for a bit
+TOP_PAD = 2.0             # top Y padding in points
+BOT_PAD = 2.0             # bottom Y padding in points
+WINDOW_TOURS = 2.0       # visible window width in tours
+
 # ---- Load & normalize ----
 df = pd.read_csv(CSV_PATH)
 df.columns = [c.strip().lower() for c in df.columns]
@@ -45,13 +52,18 @@ top10_after_cut = cum[cut_tour].sort_values(
 frames_per_segment = int(FPS * SEC_PER_TOUR)
 segment_starts = np.arange(0, frames_per_segment *
                            len(tours), frames_per_segment)
-total_frames = frames_per_segment * len(tours)
+_tail_pause_frames = int(FPS * TAIL_PAUSE_SEC)
+last_anim_frame = frames_per_segment * len(tours)
+total_frames = last_anim_frame + _tail_pause_frames
 
 
 def frame_to_frac_tour(gf: int) -> float:
-    seg_idx = min(len(tours) - 1, gf // frames_per_segment)
+    # Clamp after the last tour to freeze lines while keeping right margin visible
+    if gf >= last_anim_frame:
+        return float(tours[-1])
+    seg_idx = gf // frames_per_segment
     t0 = tours[seg_idx]
-    if seg_idx == len(tours) - 1:
+    if seg_idx >= len(tours) - 1:
         return float(t0)
     within = gf - segment_starts[seg_idx]
     return t0 + within / max(1, frames_per_segment)
@@ -76,8 +88,12 @@ plt.subplots_adjust(right=0.80)
 ax.set_xlabel("Tour")
 ax.set_ylabel("Cumulative score")
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-ax.set_xlim(tours.min(), tours.max())
+ax.set_xlim(tours.min(), tours.max() + RIGHT_MARGIN_TOURS)
 ax.grid(True, alpha=0.2)
+
+# Precompute for speed
+tours_float = tours.astype(float)
+player_cum = {p: cum.loc[p, tours].to_numpy() for p in players}
 
 lines = {p: ax.plot([], [], lw=1.2, alpha=0.6)[0] for p in players}
 name_labels = {}
@@ -102,18 +118,20 @@ def init():
 
 def update(frame):
     frac = frame_to_frac_tour(frame)
-    y_now = interp_values(frac)
-    ax.set_xlim(max(tours.min(), frac - 1), min(tours.max(), frac + 1))
-
-    current_tour_int = int(np.floor(frac))
-    show_only_top10 = current_tour_int >= cut_tour
+    # Keep a fixed-width window of WINDOW_TOURS and a constant right gap RIGHT_MARGIN_TOURS
+    max_right = float(tours.max()) + RIGHT_MARGIN_TOURS
+    # keep a gap ahead of current time
+    desired_right = min(max_right, float(frac) + RIGHT_MARGIN_TOURS)
+    left = max(float(tours.min()), desired_right - WINDOW_TOURS)
+    right = left + WINDOW_TOURS
+    ax.set_xlim(left, right)
 
     # Current dynamic top-10 for styling/box
+    y_now = interp_values(frac)
     current_top10 = y_now.sort_values(ascending=False).index[:10].tolist()
     visible_players = current_top10
     # dynamic Y-limits based on current top-10 range
-    TOP_PAD = 2.0
-    BOT_PAD = 2.0
+
     if current_top10:
         top_val = float(y_now[current_top10[0]])
         bottom_val = float(y_now[current_top10[-1]])
@@ -133,11 +151,13 @@ def update(frame):
     for p in players:
         ln = lines[p]
         t_floor = int(np.floor(frac))
-        xs = list(tours[tours <= t_floor].astype(float))
-        ys = list(cum.loc[p, tours[tours <= t_floor]].values if xs else [])
+        # number of full tours to draw
+        idx = int(np.searchsorted(tours, t_floor, side='right'))
+        xs = tours_float[:idx].tolist()
+        ys = player_cum[p][:idx].tolist()
         if frac > t_floor and t_floor < tours.max():
             xs.append(float(frac))
-            ys.append(y_now[p])
+            ys.append(float(y_now[p]))
 
         if p in visible_players:
             ln.set_data(xs, ys)
