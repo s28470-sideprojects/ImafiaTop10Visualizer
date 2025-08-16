@@ -71,6 +71,8 @@ def interp_values(frac_tour: float) -> pd.Series:
 
 # ---- Figure ----
 fig, ax = plt.subplots(figsize=(16, 9), dpi=250)
+# reserve space on the right for the standings box
+plt.subplots_adjust(right=0.80)
 ax.set_xlabel("Tour")
 ax.set_ylabel("Cumulative score")
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -81,7 +83,7 @@ lines = {p: ax.plot([], [], lw=1.2, alpha=0.6)[0] for p in players}
 name_labels = {}
 standings_box = ax.text(
     1.02, 1.0, "", transform=ax.transAxes, va="top", ha="left",
-    bbox=dict(boxstyle="round", facecolor="white", alpha=0.85)
+    bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9)
 )
 title_txt = ax.text(0.02, 1.02, "", transform=ax.transAxes,
                     va="bottom", ha="left")
@@ -101,7 +103,6 @@ def init():
 def update(frame):
     frac = frame_to_frac_tour(frame)
     y_now = interp_values(frac)
-    ax.set_ylim(0, max(1.0, float(y_now.max()) * 1.05))
     ax.set_xlim(max(tours.min(), frac - 1), min(tours.max(), frac + 1))
 
     current_tour_int = int(np.floor(frac))
@@ -110,6 +111,18 @@ def update(frame):
     # Current dynamic top-10 for styling/box
     current_top10 = y_now.sort_values(ascending=False).index[:10].tolist()
     visible_players = current_top10
+    # dynamic Y-limits based on current top-10 range
+    TOP_PAD = 2.0
+    BOT_PAD = 2.0
+    if current_top10:
+        top_val = float(y_now[current_top10[0]])
+        bottom_val = float(y_now[current_top10[-1]])
+    else:
+        top_val = float(y_now.max())
+        bottom_val = 0.0
+    ymin = max(0.0, bottom_val - BOT_PAD)
+    ymax = max(ymin + 1e-3, top_val + TOP_PAD)
+    ax.set_ylim(ymin, ymax)
 
     # Clear name labels
     for lbl in list(name_labels.values()):
