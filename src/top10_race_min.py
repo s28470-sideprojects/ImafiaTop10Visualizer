@@ -70,7 +70,7 @@ def interp_values(frac_tour: float) -> pd.Series:
 
 
 # ---- Figure ----
-fig, ax = plt.subplots(figsize=(11, 6.5))
+fig, ax = plt.subplots(figsize=(16, 9), dpi=250)
 ax.set_xlabel("Tour")
 ax.set_ylabel("Cumulative score")
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
