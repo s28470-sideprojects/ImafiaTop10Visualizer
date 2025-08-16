@@ -5,10 +5,20 @@ import csv
 from bs4.element import Tag
 import requests
 import os
+from pathlib import Path
+import re
 
 
-def parse_tournament(url: str):
-    """Download tournament page, parse games and save to data/tournament_results.csv"""
+def to_snake_case(name: str) -> str:
+    """Convert a string to snake_case: lowercase, spaces and non-alphanum -> underscores"""
+    name = name.lower()
+    name = re.sub(r'[^a-z0-9]+', '_', name)   # replace non-alphanum with _
+    name = re.sub(r'_+', '_', name)           # collapse multiple _
+    return name.strip('_')
+
+
+def parse_tournament(url: str, out_basename: str | Path | None = None):
+    """Download tournament page, parse games and save to CSV"""
     headers = {
         'User-Agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) '
@@ -21,6 +31,15 @@ def parse_tournament(url: str):
     html = response.text
 
     soup = bs4.BeautifulSoup(html, 'html.parser')
+
+    # if no out_basename provided -> build from og:title
+    if out_basename is None:
+        title_meta = soup.find("meta", property="og:title")
+        if title_meta and "content" in title_meta.attrs:
+            out_basename = "data/" + to_snake_case(title_meta["content"])
+        else:
+            out_basename = "data/tournament_results"
+
     games_items = soup.find('div', class_='games_items')
 
     games_item_titles = games_items.find_all('div', class_='games_item_title')
@@ -56,18 +75,19 @@ def parse_tournament(url: str):
     os.makedirs("data", exist_ok=True)
 
     # save to CSV
-    csv_file = os.path.join("data", "tournament_results.csv")
-    with open(csv_file, mode="w", newline="", encoding="utf-8") as f:
+    out_path = Path(out_basename).with_suffix(".csv")
+    with open(out_path, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["tour", "nickname", "points"])
         writer.writeheader()
         writer.writerows(all_rows)
 
-    return all_rows
+    return all_rows, out_path
 
 
-# URL турнира
-url = 'https://imafia.org/tournament/387#tournament-results'
+if __name__ == '__main__':
+    # URL of the tournament
+    url = 'https://imafia.org/tournament/387#tournament-results'
 
-# Example usage
-data = parse_tournament(url)
-print(f"Saved {len(data)} rows to data/tournament_results.csv")
+    # Example usage
+    data, path = parse_tournament(url)
+    print(f"Saved {len(data)} rows to {path}")
