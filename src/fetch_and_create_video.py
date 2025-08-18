@@ -1,4 +1,6 @@
 # All comments/messages in code are in English only.
+# All comments/messages in code are in English only.
+import sys
 from pathlib import Path
 # your file with parse_tournament
 from fetch_tournament_results import parse_tournament
@@ -32,6 +34,9 @@ def make_tournament_video(url: str, out_basename: str | Path | None = None) -> P
 
 
 if __name__ == "__main__":
-    url = "https://imafia.org/tournament/493#tournament-results"
+    if len(sys.argv) <= 1:
+        raise SystemExit(
+            "Error: Please provide a tournament URL as a command-line argument.")
+    url = sys.argv[1]
     saved_video = make_tournament_video(url)
     print(f"Saved video -> {saved_video}")

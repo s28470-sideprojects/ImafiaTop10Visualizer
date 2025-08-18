@@ -52,6 +52,29 @@ def render_top10_race(
     df["tour"] = df["tour"].astype(int)
     df["points"] = df["points"].fillna(0.0).round(1)
 
+    # --- Finals handling (restart at the end treated as finals) ---
+    # Detect segments by original row order: when current tour < previous tour, a new segment starts.
+    df = df.reset_index(names="__row__").sort_values("__row__")
+    seg_break = (df["tour"].shift(1).notna()) & (
+        df["tour"] < df["tour"].shift(1))
+    df["__segment_id__"] = seg_break.cumsum().astype(int)
+
+    final_start_tour = None
+    last_seg = int(df["__segment_id__"].max())
+    if last_seg > 0:
+        # regular = all segments before the last; finals = the last segment
+        regular_mask = df["__segment_id__"] < last_seg
+        finals_mask = df["__segment_id__"] == last_seg
+        if regular_mask.any() and finals_mask.any():
+            max_regular_tour = int(df.loc[regular_mask, "tour"].max())
+            # Continue numbering for finals
+            df.loc[finals_mask, "tour"] = df.loc[finals_mask,
+                                                 "tour"] + max_regular_tour
+            final_start_tour = max_regular_tour + 1
+
+    # Cleanup helper columns
+    df = df.drop(columns=["__row__", "__segment_id__"])
+
     # ---- Add (tour=0, points=0) for each player ----
     players = sorted(df["nickname"].unique().tolist())
     zero_rows = pd.DataFrame({"tour": 0, "nickname": players, "points": 0.0})
@@ -105,7 +128,7 @@ def render_top10_race(
     fig, ax = plt.subplots(figsize=FIGSIZE, dpi=DPI)
     plt.subplots_adjust(right=0.80)  # reserve space for the standings box
     ax.set_xlabel("Tour")
-    ax.set_ylabel("Cumulative score")
+    ax.set_ylabel("")
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlim(tours.min(), tours.max() + RIGHT_MARGIN_TOURS)
     ax.grid(True, alpha=0.2)
@@ -197,8 +220,10 @@ def render_top10_race(
         )
         standings_box.set_text(standings_text)
 
-        title_txt.set_text(
-            f"Tournament progress — tour {frac:.2f}/{tours.max()}")
+        title = f"Tournament progress — tour {frac:.2f}/{tours.max()}"
+        if final_start_tour is not None and frac >= final_start_tour - 1e-9:
+            title += " — Finals"
+        title_txt.set_text(title)
         return list(lines.values()) + list(name_labels.values()) + [standings_box, title_txt]
 
     ani = animation.FuncAnimation(
